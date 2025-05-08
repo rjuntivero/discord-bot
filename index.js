@@ -11,15 +11,15 @@ client.login(process.env.DISCORD_TOKEN);
 
 const prefix = '!';
 
-//login
+// /linkaccount
 client.on('messageCreate', async (message) => {
-  // console.log('Message content:', message.content);
   if (message?.author.bot) return;
   if (message.content.startsWith(prefix)) return;
 
+  const userId = message.author.id;
   const command = message.content.slice(prefix.length).trim();
 
-  if (command === 'login') {
+  if (command === 'linkaccount') {
     const loginButton = new ButtonBuilder().setCustomId('login').setLabel('Login to your account').setStyle(ButtonStyle.Primary);
 
     const row = new ActionRowBuilder().addComponents(loginButton);
