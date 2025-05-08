@@ -62,7 +62,7 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    const loginURL = `https://localhost:8080/magic-login?discord_id=${discordId}&token=${token}`;
+    const loginURL = `http://localhost:8080/magic-login?discord_id=${discordId}&token=${token}`;
 
     const btn = new ButtonBuilder().setLabel('Open Themetar').setStyle(ButtonStyle.Link).setURL(loginURL);
 
