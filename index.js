@@ -44,74 +44,16 @@ client.on('interactionCreate', async (interaction) => {
 
   if (interaction.customId === 'login') {
     const discordId = interaction.user.id;
-    const username = interaction.user.username;
-    const avatarURL = interaction.user.displayAvatarURL({ format: 'png', size: 256 });
     const serverId = interaction.guild.id;
-    const serverName = interaction.guild.name;
-    const serverIcon = interaction.guild.iconURL({ format: 'png', size: 256 }) ?? '';
-    console.log(serverName);
-    console.log(serverIcon);
+    const serverName = encodeURIComponent(interaction.guild.name);
+    const serverIcon = interaction.guild.icon ? `https://cdn.discordapp.com/icons/${serverId}/${interaction.guild.icon}.png` : null;
 
-    // Generate magic token
-    const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    console.log(`[Login Attempt] User: ${discordId} | Server: ${serverId}`);
 
-    // Save token to Supabase
-    const { error } = await supabase.from('magic_tokens').insert([
-      {
-        discord_id: discordId,
-        token: token,
-        expires_at: expiresAt.toISOString(),
-      },
-    ]);
+    const loginURL = `http://localhost:8080/api/login/discord?discord_id=${discordId}&server_id=${serverId}&server_name=${serverName}&server_icon=${encodeURIComponent(serverIcon)}`;
 
-    if (error) {
-      console.error('Failed to create magic token:', error);
-      await interaction.reply({ content: 'Something went wrong. Please try again later.', ephemeral: true });
-      return;
-    }
-
-    // fetch members
-    const guild = await interaction.guild.fetch();
-    await guild.members.fetch();
-
-    const members = guild.members.cache.map((member) => ({
-      id: member.user.id,
-      username: member.user.username,
-      avatar: member.user.displayAvatarURL({ format: 'png', size: 128 }),
-    }));
-
-    // send data to API
-    try {
-      const response = await fetch('http://localhost:8080/api/magic-login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          discord_id: discordId,
-          token,
-          username,
-          avatar_url: avatarURL,
-          server_id: serverId,
-          server_name: serverName,
-          server_icon: serverIcon,
-          members,
-        }),
-      });
-
-      if (!response.ok) {
-        console.error(`Failed to send login data: ${response.statusText}`);
-      } else {
-        console.log('User, server, and members synced successfully');
-      }
-    } catch (err) {
-      console.error('Error sending login data:', err);
-    }
-
-    // send URL
-    const loginURL = `http://localhost:8080/api/magic-login?discord_id=${discordId}&token=${token}`;
     const btn = new ButtonBuilder().setLabel('Open PFPMonth').setStyle(ButtonStyle.Link).setURL(loginURL);
+
     const row = new ActionRowBuilder().addComponents(btn);
 
     await interaction.update({
