@@ -45,12 +45,45 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.customId === 'login') {
     const discordId = interaction.user.id;
     const serverId = interaction.guild.id;
-    const serverName = encodeURIComponent(interaction.guild.name);
+    const serverName = interaction.guild.name;
     const serverIcon = interaction.guild.icon ? `https://cdn.discordapp.com/icons/${serverId}/${interaction.guild.icon}.png` : null;
 
-    console.log(`[Login Attempt] User: ${discordId} | Server: ${serverId}`);
+    // check if server already tracked in supabase
+    const { data: serverExists } = await supabase.from('servers').select('id').eq('id', serverId).maybeSingle();
 
-    const loginURL = `http://localhost:8080/api/login/discord?discord_id=${discordId}&server_id=${serverId}&server_name=${serverName}&server_icon=${encodeURIComponent(serverIcon)}`;
+    if (!serverExists) {
+      const guild = await client.guilds.fetch(serverId);
+      const members = await guild.members.fetch();
+
+      const usersToInsert = [];
+      const userServersToInsert = [];
+
+      for (const [, member] of members) {
+        usersToInsert.push({
+          discord_id: member.user.id,
+          username: member.user.username,
+          avatar_url: member.user.displayAvatarURL(),
+        });
+
+        userServersToInsert.push({
+          // user_id: member.user.id,
+          server_id: serverId,
+          discord_id: member.user.id,
+        });
+      }
+
+      await supabase.from('users').upsert(usersToInsert, {
+        onConflict: 'discord_id',
+      });
+
+      await supabase.from('user_servers').upsert(userServersToInsert, {
+        onConflict: 'user_id,server_id',
+      });
+
+      await supabase.from('servers').insert({ id: serverId });
+    }
+
+    const loginURL = `http://localhost:8080/api/login/discord?discord_id=${discordId}&server_id=${serverId}&server_name=${encodeURIComponent(serverName)}&server_icon=${encodeURIComponent(serverIcon ?? '')}`;
 
     const btn = new ButtonBuilder().setLabel('Open PFPMonth').setStyle(ButtonStyle.Link).setURL(loginURL);
 
