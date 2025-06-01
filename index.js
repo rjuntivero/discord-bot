@@ -77,7 +77,7 @@ client.on('interactionCreate', async (interaction) => {
       });
 
       await supabase.from('user_servers').upsert(userServersToInsert, {
-        onConflict: 'user_id,server_id',
+        onConflict: 'discord_id,server_id',
       });
 
       await supabase.from('servers').insert({ id: serverId });
