@@ -53,7 +53,7 @@ client.on('interactionCreate', async (interaction) => {
     const { data: serverExists } = await supabase.from('servers').select('id').eq('id', serverId).maybeSingle();
 
     // if server doesn't exist, insert it and all members
-    if (!serverExists) {
+    if (serverExists) {
       try {
         const guild = await client.guilds.fetch(serverId);
         const members = await guild.members.fetch();
@@ -74,15 +74,23 @@ client.on('interactionCreate', async (interaction) => {
           });
         }
 
-        await supabase.from('users').upsert(usersToInsert, {
-          onConflict: 'discord_id',
-        });
-
-        await supabase.from('user_servers').upsert(userServersToInsert, {
+        const { error: serverUpsertError } = await supabase.from('user_servers').upsert(userServersToInsert, {
           onConflict: 'discord_id,server_id',
         });
 
-        await supabase.from('servers').insert({ id: serverId });
+        if (serverUpsertError) {
+          console.log('error inserting users', serverUpsertError);
+        }
+
+        const { error: userUpsertError } = await supabase.from('discord_users').upsert(usersToInsert, {
+          onConflict: 'discord_id',
+        });
+
+        if (userUpsertError) {
+          console.log('error inserting users', userUpsertError);
+        }
+
+        // await supabase.from('servers').insert({ id: serverId });
       } catch (err) {
         console.error('Failed to fetch and insert server data:', err);
       }
@@ -100,7 +108,7 @@ client.on('interactionCreate', async (interaction) => {
       server_id: serverId,
     };
 
-    const { error: userInsertError } = await supabase.from('users').upsert([currentUser], {
+    const { error: userInsertError } = await supabase.from('discord_users').upsert([currentUser], {
       onConflict: 'discord_id',
     });
 
