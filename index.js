@@ -52,7 +52,7 @@ client.on('interactionCreate', async (interaction) => {
     // check if server already tracked in supabase
     const { data: serverExists } = await supabase.from('servers').select('id').eq('id', serverId).maybeSingle();
 
-    // only insert users ONCE when the server is added
+    // if server doesn't exist, insert it and all members
     if (!serverExists) {
       try {
         const guild = await client.guilds.fetch(serverId);
@@ -74,35 +74,49 @@ client.on('interactionCreate', async (interaction) => {
           });
         }
 
-        // insert users
-        const { error: userInsertError } = await supabase.from('users').upsert(usersToInsert, {
+        await supabase.from('users').upsert(usersToInsert, {
           onConflict: 'discord_id',
         });
 
-        if (userInsertError) {
-          console.error('User upsert error:', userInsertError);
-        }
-
-        // insert user servers
-        const { error: userServerInsertError } = await supabase.from('user_servers').upsert(userServersToInsert, {
+        await supabase.from('user_servers').upsert(userServersToInsert, {
           onConflict: 'discord_id,server_id',
         });
 
-        if (userServerInsertError) {
-          console.error('User-server upsert error:', userServerInsertError);
-        }
-
-        //insert the server
-        const { error: serverError } = await supabase.from('servers').insert({ id: serverId });
-
-        if (serverError) {
-          console.error('server upsert error:', serverError);
-        }
+        await supabase.from('servers').insert({ id: serverId });
       } catch (err) {
-        console.error('Failed to fetch and insert users:', err);
+        console.error('Failed to fetch and insert server data:', err);
       }
     }
 
+    // always upsert the user who clicked the button
+    const currentUser = {
+      discord_id: interaction.user.id,
+      username: interaction.user.username,
+      avatar_url: interaction.user.displayAvatarURL(),
+    };
+
+    const currentUserServer = {
+      discord_id: interaction.user.id,
+      server_id: serverId,
+    };
+
+    const { error: userInsertError } = await supabase.from('users').upsert([currentUser], {
+      onConflict: 'discord_id',
+    });
+
+    if (userInsertError) {
+      console.error('Current user upsert error:', userInsertError);
+    }
+
+    const { error: userServerInsertError } = await supabase.from('user_servers').upsert([currentUserServer], {
+      onConflict: 'discord_id,server_id',
+    });
+
+    if (userServerInsertError) {
+      console.error('Current user-server upsert error:', userServerInsertError);
+    }
+
+    // login button redirect
     const loginURL = `http://localhost:8080/api/login/discord?discord_id=${discordId}&server_id=${serverId}&server_name=${encodeURIComponent(serverName)}&server_icon=${encodeURIComponent(serverIcon ?? '')}`;
 
     const btn = new ButtonBuilder().setLabel('Open PFPMonth').setStyle(ButtonStyle.Link).setURL(loginURL);
@@ -112,5 +126,35 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.update({
       components: [row],
     });
+  }
+});
+
+// add new users once they join
+client.on('guildMemberAdd', async (member) => {
+  try {
+    // upsert the new user
+    await supabase.from('users').upsert(
+      [
+        {
+          discord_id: member.user.id,
+          username: member.user.username,
+          avatar_url: member.user.displayAvatarURL(),
+        },
+      ],
+      { onConflict: 'discord_id' }
+    );
+
+    // upsert the user-server relationship
+    await supabase.from('user_servers').upsert(
+      [
+        {
+          discord_id: member.user.id,
+          server_id: member.guild.id,
+        },
+      ],
+      { onConflict: 'discord_id,server_id' }
+    );
+  } catch (err) {
+    console.error('Error inserting new member:', err);
   }
 });
