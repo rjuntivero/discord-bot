@@ -18,6 +18,7 @@ client.login(process.env.DISCORD_TOKEN);
 const prefix = '!';
 
 client.on('messageCreate', async (message) => {
+  console.log('oh hi');
   if (message?.author.bot) return;
   if (message.content.startsWith(prefix)) return;
 
@@ -51,36 +52,55 @@ client.on('interactionCreate', async (interaction) => {
     // check if server already tracked in supabase
     const { data: serverExists } = await supabase.from('servers').select('id').eq('id', serverId).maybeSingle();
 
+    // only insert users ONCE when the server is added
     if (!serverExists) {
-      const guild = await client.guilds.fetch(serverId);
-      const members = await guild.members.fetch();
+      try {
+        const guild = await client.guilds.fetch(serverId);
+        const members = await guild.members.fetch();
 
-      const usersToInsert = [];
-      const userServersToInsert = [];
+        const usersToInsert = [];
+        const userServersToInsert = [];
 
-      for (const [, member] of members) {
-        usersToInsert.push({
-          discord_id: member.user.id,
-          username: member.user.username,
-          avatar_url: member.user.displayAvatarURL(),
+        for (const [, member] of members) {
+          usersToInsert.push({
+            discord_id: member.user.id,
+            username: member.user.username,
+            avatar_url: member.user.displayAvatarURL(),
+          });
+
+          userServersToInsert.push({
+            server_id: serverId,
+            discord_id: member.user.id,
+          });
+        }
+
+        // insert users
+        const { error: userInsertError } = await supabase.from('users').upsert(usersToInsert, {
+          onConflict: 'discord_id',
         });
 
-        userServersToInsert.push({
-          // user_id: member.user.id,
-          server_id: serverId,
-          discord_id: member.user.id,
+        if (userInsertError) {
+          console.error('User upsert error:', userInsertError);
+        }
+
+        // insert user servers
+        const { error: userServerInsertError } = await supabase.from('user_servers').upsert(userServersToInsert, {
+          onConflict: 'discord_id,server_id',
         });
+
+        if (userServerInsertError) {
+          console.error('User-server upsert error:', userServerInsertError);
+        }
+
+        //insert the server
+        const { error: serverError } = await supabase.from('servers').insert({ id: serverId });
+
+        if (serverError) {
+          console.error('server upsert error:', serverError);
+        }
+      } catch (err) {
+        console.error('Failed to fetch and insert users:', err);
       }
-
-      await supabase.from('users').upsert(usersToInsert, {
-        onConflict: 'discord_id',
-      });
-
-      await supabase.from('user_servers').upsert(userServersToInsert, {
-        onConflict: 'discord_id,server_id',
-      });
-
-      await supabase.from('servers').insert({ id: serverId });
     }
 
     const loginURL = `http://localhost:8080/api/login/discord?discord_id=${discordId}&server_id=${serverId}&server_name=${encodeURIComponent(serverName)}&server_icon=${encodeURIComponent(serverIcon ?? '')}`;
